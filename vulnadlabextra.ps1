@@ -89,11 +89,11 @@ function Enable-RemotePrinting {
 
 # Função para habilitar WinRM em todos os hosts do domínio
 function Enable-WinRMOnDomainHosts {
-    Write-Output "Ativando WinRM (Windows Remote Management) em todos os hosts do domínio..."
+    Write-Output "A ativar WinRM (Windows Remote Management) em todos os hosts do dominio"
     
     # Verifica se o módulo Active Directory está disponível
     if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
-        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Write-Output "O madulo Active Directory nao esta disponível. Instalando o modulo"
         Install-WindowsFeature -Name RSAT-AD-PowerShell
         Import-Module ActiveDirectory
     }
@@ -106,7 +106,7 @@ function Enable-WinRMOnDomainHosts {
         Write-Output "A habilitar WinRM no host: $computer"
         try {
             Invoke-Command -ComputerName $computer -ScriptBlock {
-                Write-Output "Habilitando e configurando WinRM..."
+                Write-Output "Habilitanr e configurar WinRM"
                 Enable-PSRemoting -Force
                 Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true
                 Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true
@@ -154,6 +154,44 @@ function Enable-RDPOnDomainHosts {
     }
 }
 
+# Função para habilitar RPC em todos os hosts do domínio
+function Enable-RPCOnDomainHosts {
+    Write-Output "Ativando RPC (Remote Procedure Call) em todos os hosts do domínio..."
+    
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os computadores no domínio
+    $computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para habilitar RPC em cada computador
+    foreach ($computer in $computers) {
+        Write-Output "Habilitando RPC no host: $computer"
+        try {
+            Invoke-Command -ComputerName $computer -ScriptBlock {
+                Write-Output "Configurando RPC..."
+
+                # Certifique-se de que o serviço RPC (Remote Procedure Call) está ativado
+                Set-Service -Name "RpcSs" -StartupType Automatic
+                Start-Service -Name "RpcSs"
+                
+                # Habilitar regras de firewall para permitir tráfego RPC
+                Write-Output "Configurando Firewall para permitir tráfego RPC..."
+                Enable-NetFirewallRule -DisplayGroup "Remote Event Log Management"
+                Enable-NetFirewallRule -DisplayGroup "Remote Service Management"
+                
+                Write-Output "RPC habilitado com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao configurar RPC no host: $computer. Erro: $_"
+        }
+    }
+}
+
 # Main
 function main {
     Enable-SMBv1
@@ -168,6 +206,7 @@ function main {
     Enable-RemotePrinting
     Enable-WinRMOnDomainHosts
     Enable-RDPOnDomainHosts
+    Enable-RPCOnDomainHosts
     Start-Sleep 30; Restart-Computer
 }
 
