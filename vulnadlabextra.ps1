@@ -192,6 +192,119 @@ function Enable-RPCOnDomainHosts {
     }
 }
 
+# Função para desabilitar a assinatura SMB em todos os hosts do domínio
+function Disable-SMBSigningOnDomainHosts {
+    Write-Output "Desativando a Assinatura SMB em todos os hosts do domínio..."
+    
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os computadores no domínio
+    $computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para desabilitar a assinatura SMB em cada computador
+    foreach ($computer in $computers) {
+        Write-Output "Desativando a assinatura SMB no host: $computer"
+        try {
+            Invoke-Command -ComputerName $computer -ScriptBlock {
+                Write-Output "Configurando SMB para desativar a assinatura..."
+
+                # Desabilita a assinatura SMB para clientes
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name "RequireSecuritySignature" -Value 0 -Force
+
+                # Desabilita a assinatura SMB para servidores
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "EnableSecuritySignature" -Value 0 -Force
+                
+                Write-Output "Assinatura SMB desativada com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao desativar a assinatura SMB no host: $computer. Erro: $_"
+        }
+    }
+}
+
+# Função para habilitar SSL/LDAP em todos os hosts do domínio
+function Enable-SSL_LDAPOnDomainHosts {
+    Write-Output "Ativando SSL/LDAP (LDAPS) em todos os hosts do domínio..."
+
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os controladores de domínio no domínio
+    $domainControllers = Get-ADDomainController -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para habilitar SSL/LDAP em cada controlador de domínio
+    foreach ($dc in $domainControllers) {
+        Write-Output "Configurando SSL/LDAP no controlador de domínio: $dc"
+        try {
+            Invoke-Command -ComputerName $dc -ScriptBlock {
+                Write-Output "Configurando LDAP para usar SSL..."
+
+                # Instalar o certificado SSL no controlador de domínio
+                Write-Output "Certifique-se de que há um certificado SSL válido instalado para LDAPS."
+                
+                # Habilitar LDAPS (implica que o certificado SSL está configurado)
+                # Configuração do Firewall para permitir tráfego LDAPS na porta 636
+                Write-Output "Configurando Firewall para permitir LDAPS..."
+                New-NetFirewallRule -DisplayName "Allow LDAPS" -Direction Inbound -Protocol TCP -LocalPort 636 -Action Allow
+                
+                Write-Output "SSL/LDAP (LDAPS) configurado com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao configurar SSL/LDAP no controlador de domínio: $dc. Erro: $_"
+        }
+    }
+}
+
+# Função para habilitar WinRM (RPC sobre HTTP/1.1) em todos os hosts do domínio
+function Enable-RPCOverHTTPOnDomainHosts {
+    Write-Output "Ativando WinRM (RPC sobre HTTP/1.1) em todos os hosts do domínio..."
+
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os computadores no domínio
+    $computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para habilitar WinRM (RPC sobre HTTP) em cada computador
+    foreach ($computer in $computers) {
+        Write-Output "Configurando WinRM (RPC sobre HTTP) no host: $computer"
+        try {
+            Invoke-Command -ComputerName $computer -ScriptBlock {
+                Write-Output "Configurando WinRM para aceitar conexões HTTP..."
+                
+                # Habilita WinRM
+                Enable-PSRemoting -Force
+                
+                # Configura WinRM para permitir conexões HTTP não criptografadas (inseguro)
+                Write-Output "Configurando WinRM para permitir conexões HTTP não criptografadas..."
+                Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true
+                
+                # Configurar firewall para permitir conexões na porta 5985 (HTTP)
+                Write-Output "Configurando Firewall para permitir tráfego HTTP (porta 5985)..."
+                New-NetFirewallRule -Name "Allow WinRM HTTP" -DisplayName "Allow WinRM HTTP" -Protocol TCP -LocalPort 5985 -Action Allow
+                
+                Write-Output "WinRM (RPC sobre HTTP) configurado com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao configurar WinRM (RPC sobre HTTP) no host: $computer. Erro: $_"
+        }
+    }
+}
+
+
 # Main
 function main {
     Enable-SMBv1
@@ -207,6 +320,9 @@ function main {
     Enable-WinRMOnDomainHosts
     Enable-RDPOnDomainHosts
     Enable-RPCOnDomainHosts
+    Disable-SMBSigningOnDomainHosts
+    Enable-SSL_LDAPOnDomainHosts
+    Enable-RPCOverHTTPOnDomainHosts
     Start-Sleep 30; Restart-Computer
 }
 
