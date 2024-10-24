@@ -87,6 +87,73 @@ function Enable-RemotePrinting {
     Start-Service -Name "Spooler"
 }
 
+# Função para habilitar WinRM em todos os hosts do domínio
+function Enable-WinRMOnDomainHosts {
+    Write-Output "Ativando WinRM (Windows Remote Management) em todos os hosts do domínio..."
+    
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O módulo Active Directory não está disponível. Instalando o módulo..."
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os computadores no domínio
+    $computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para habilitar WinRM em cada computador
+    foreach ($computer in $computers) {
+        Write-Output "A habilitar WinRM no host: $computer"
+        try {
+            Invoke-Command -ComputerName $computer -ScriptBlock {
+                Write-Output "Habilitando e configurando WinRM..."
+                Enable-PSRemoting -Force
+                Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true
+                Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true
+                Write-Output "WinRM habilitado com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao configurar WinRM no host: $computer. Erro: $_"
+        }
+    }
+}
+
+# Função para habilitar RDP em todos os hosts do domínio
+function Enable-RDPOnDomainHosts {
+    Write-Output "Ativar RDP (Remote Desktop Protocol) em todos os hosts do dominio"
+    
+    # Verifica se o módulo Active Directory está disponível
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        Write-Output "O modulo Active Directory nao esta disponivel. Instalar o modulo"
+        Install-WindowsFeature -Name RSAT-AD-PowerShell
+        Import-Module ActiveDirectory
+    }
+
+    # Obter todos os computadores no domínio
+    $computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+
+    # Loop para habilitar RDP em cada computador
+    foreach ($computer in $computers) {
+        Write-Output "Habilitar RDP no host: $computer"
+        try {
+            Invoke-Command -ComputerName $computer -ScriptBlock {
+                Write-Output "A configurar RDP"
+                
+                # Permitir conexões RDP
+                Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+                
+                # Configurar firewall para permitir RDP
+               # Write-Output "ConfigurarFirewall para permitir conexões RDP..."
+               # Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+                
+              #  Write-Output "RDP habilitado com sucesso."
+            } -Credential (Get-Credential) -ErrorAction Stop
+        } catch {
+            Write-Output "Falha ao configurar RDP no host: $computer. Erro: $_"
+        }
+    }
+}
+
 # Main
 function main {
     Enable-SMBv1
@@ -99,6 +166,8 @@ function main {
     Enable-SNMPv2c
     Enable-NetBIOS
     Enable-RemotePrinting
+    Enable-WinRMOnDomainHosts
+    Enable-RDPOnDomainHosts
     Start-Sleep 30; Restart-Computer
 }
 
